@@ -15,11 +15,13 @@ jobs:
       matrix:
         os:     [ubuntu-20.04, ubuntu-22.04]
         mode:   [newlib, linux, musl]
-        target: [rv32gc-ilp32d, rv64gc-lp64d]
+        target: [rv32gc-ilp32d, rv64gc-lp64d, rv32gc-ilp32, rv64gc-lp64]
         compiler: [gcc, llvm]
         exclude:
           - mode: musl
             target: rv32gc-ilp32d
+          - mode: musl
+            target: rv32gc-ilp32
           - mode: musl
             compiler: llvm
     steps:
@@ -77,7 +79,7 @@ jobs:
             *)
               MODE="elf";;
           esac
-          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ matrix.os }}-${{ matrix.compiler }}-nightly" >> $GITHUB_OUTPUT
+          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ matrix.target }}-${{ matrix.os }}-${{ matrix.compiler }}-nightly" >> $GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v3
         with:
