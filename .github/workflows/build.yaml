@@ -1,32 +1,38 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
   workflow_dispatch:
+    inputs:
+      os:
+        type: choice
+        description: Actions runner OS
+        options:
+          - ubuntu-20.04
+          - ubuntu-22.04
+        required: true
+      mode:
+        type: choice
+        description: Standard library to compile.
+        options:
+          - newlib
+          - linux
+          - musl
+        required: true
+      target:
+        type: string
+        description: "arch-abi pair; formatted '<arch>-<abi>'"
+        required: true
+      compiler:
+        type: choice
+        description: which compiler to use
+        options:
+          - gcc
+          - llvm
+        required: true
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      max-parallel: 4
-      fail-fast: false
-      matrix:
-        os:     [ubuntu-20.04, ubuntu-22.04]
-        mode:   [newlib, linux, musl]
-        target: [rv32gc-ilp32d, rv64gc-lp64d, rv32gc-ilp32, rv64gc-lp64]
-        compiler: [gcc, llvm]
-        exclude:
-          - mode: musl
-            target: rv32gc-ilp32d
-          - mode: musl
-            target: rv32gc-ilp32
-          - mode: musl
-            compiler: llvm
+    runs-on: ${{ inputs.os }}
     steps:
       - name: Remove unneeded frameworks to recover disk space
         run: |
@@ -44,22 +50,19 @@ jobs:
 
       - name: build toolchain
         run: |
-          TARGET_TUPLE=($(echo ${{ matrix.target }} | tr "-" "\n"))
+          TARGET_TUPLE=($(echo ${{ inputs.target }} | tr "-" "\n"))
           BUILD_TOOLCHAIN="./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]}"
-          if [ "${{ matrix.compiler }}" == "llvm" ]; then # build toolchain with llvm
+          if [ "${{ inputs.compiler }}" == "llvm" ]; then # build toolchain with llvm
             $BUILD_TOOLCHAIN --enable-llvm
           else
             $BUILD_TOOLCHAIN
           fi
-          sudo make -j $(nproc) ${{ matrix.mode }}
+          sudo make -j $(nproc) ${{ inputs.mode }}
 
       - name: make report
-        if: |
-          matrix.os == 'ubuntu-22.04'
-          && (matrix.mode == 'linux' || matrix.mode == 'newlib')
-          && matrix.compiler == 'gcc'
+        if: ${{ false }}
         run: |
-          sudo make report-${{ matrix.mode }} -j $(nproc)
+          sudo make report-${{ inputs.mode }} -j $(nproc)
 
       - name: recover space
         run: |
@@ -73,8 +76,8 @@ jobs:
       - name: generate prebuilt toolchain name
         id:   toolchain-name-generator
         run: |
-          if [[ "${{ matrix.target }}" == *"32"* ]]; then BITS=32; else BITS=64; fi
-          case "${{ matrix.mode }}" in
+          if [[ "${{ inputs.target }}" == *"32"* ]]; then BITS=32; else BITS=64; fi
+          case "${{ inputs.mode }}" in
             "linux")
               MODE="glibc";;
             "musl")
@@ -82,7 +85,7 @@ jobs:
             *)
               MODE="elf";;
           esac
-          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ matrix.target }}-${{ matrix.os }}-${{ matrix.compiler }}-nightly" >> $GITHUB_OUTPUT
+          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ inputs.target }}-${{ inputs.os }}-${{ inputs.compiler }}-nightly" >> $GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v3
         with:
@@ -90,12 +93,10 @@ jobs:
           path: riscv.tar.gz
 
   test-sim:
-    runs-on: ${{ matrix.os }}
+    if: ${{ false }}
+    runs-on: ${{ inputs.os }}
     strategy:
       matrix:
-        os:     [ubuntu-22.04]
-        mode:   [newlib]
-        target: [rv64gc-lp64d]
         sim:    [spike]
     steps:
       - name: Remove unneeded frameworks to recover disk space
@@ -114,16 +115,16 @@ jobs:
 
       - name: build toolchain
         run: |
-          TARGET_TUPLE=($(echo ${{ matrix.target }} | tr "-" "\n"))
+          TARGET_TUPLE=($(echo ${{ inputs.target }} | tr "-" "\n"))
           ./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]} --with-sim=${{ matrix.sim }}
-          make -j $(nproc) ${{ matrix.mode }}
+          make -j $(nproc) ${{ inputs.mode }}
 
       - name: make report
-        run: make report-${{ matrix.mode }} -j $(nproc)
+        run: make report-${{ inputs.mode }} -j $(nproc)
 
   build-multilib:
     if: ${{ false }} # Disable until multilib errors are triaged
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ inputs.os }}
     strategy:
       matrix:
         os:     [ubuntu-22.04]
@@ -146,13 +147,13 @@ jobs:
 
       - name: build toolchain
         run: |
-          TARGET_TUPLE=($(echo ${{ matrix.target }} | tr "-" "\n"))
+          TARGET_TUPLE=($(echo ${{ inputs.target }} | tr "-" "\n"))
           ./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]} --enable-multilib
-          sudo make -j $(nproc) ${{ matrix.mode }}
+          sudo make -j $(nproc) ${{ inputs.mode }}
 
       - name: make report
         run: |
-          sudo make report-${{ matrix.mode }} -j $(nproc)
+          sudo make report-${{ inputs.mode }} -j $(nproc)
 
       - name: tarball build
         run: tar czvf riscv.tar.gz -C /opt/ riscv/
@@ -160,8 +161,8 @@ jobs:
       - name: generate prebuilt toolchain name
         id:   toolchain-name-generator
         run: |
-          if [[ "${{ matrix.target }}" == *"32"* ]]; then BITS=32; else BITS=64; fi
-          case "${{ matrix.mode }}" in
+          if [[ "${{ inputs.target }}" == *"32"* ]]; then BITS=32; else BITS=64; fi
+          case "${{ inputs.mode }}" in
             "linux")
               MODE="glibc";;
             "musl")
@@ -169,7 +170,7 @@ jobs:
             *)
               MODE="elf";;
           esac
-          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ matrix.os }}-multilib-nightly" >> $GITHUB_OUTPUT
+          echo "TOOLCHAIN_NAME=riscv$BITS-$MODE-${{ inputs.os }}-multilib-nightly" >> $GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v3
         with:
