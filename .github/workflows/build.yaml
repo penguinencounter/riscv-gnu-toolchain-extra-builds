@@ -20,7 +20,11 @@ on:
         required: true
       target:
         type: string
-        description: "arch-abi pair; formatted '<arch>-<abi>'"
+        description: "arch-abi pair; formatted '<arch>-<abi>', like 'rv64gc-lp64d'"
+        required: true
+      host:
+        type: string
+        description: "host: exe prefix, like 'riscv64-unknown-elf'"
         required: true
       compiler:
         type: choice
@@ -51,7 +55,7 @@ jobs:
       - name: build toolchain
         run: |
           TARGET_TUPLE=($(echo ${{ inputs.target }} | tr "-" "\n"))
-          BUILD_TOOLCHAIN="./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]}"
+          BUILD_TOOLCHAIN="./configure --host=${{ inputs.host }} --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]}"
           if [ "${{ inputs.compiler }}" == "llvm" ]; then # build toolchain with llvm
             $BUILD_TOOLCHAIN --enable-llvm
           else
